@@ -101,6 +101,7 @@ class PlantListViewModel internal constructor(
         launchDataLoad { plantRepository.tryUpdateRecentPlantsCache() }
     }
 
+
     /**
      * Return true iff the current list is filtered.
      */
