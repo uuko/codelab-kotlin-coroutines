@@ -79,12 +79,18 @@ class PlantListFragment : Fragment() {
                 updateData()
                 true
             }
+
             else -> super.onOptionsItemSelected(item)
         }
     }
 
+    //    private fun subscribeUi(adapter: PlantAdapter) {
+//        viewModel.plants.observe(viewLifecycleOwner) { plants ->
+//            adapter.submitList(plants)
+//        }
+//    }
     private fun subscribeUi(adapter: PlantAdapter) {
-        viewModel.plants.observe(viewLifecycleOwner) { plants ->
+        viewModel.plantsUsingFlow.observe(viewLifecycleOwner) { plants ->
             adapter.submitList(plants)
         }
     }
@@ -98,6 +104,8 @@ class PlantListFragment : Fragment() {
             }
         }
     }
+
+
 }
 
 /**

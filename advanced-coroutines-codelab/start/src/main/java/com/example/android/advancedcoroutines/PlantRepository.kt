@@ -16,6 +16,7 @@
 
 package com.example.android.advancedcoroutines
 
+import android.util.Log
 import androidx.annotation.AnyThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.liveData
@@ -25,6 +26,14 @@ import com.example.android.advancedcoroutines.util.CacheOnSuccess
 import com.example.android.advancedcoroutines.utils.ComparablePair
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 
 /**
@@ -117,12 +126,12 @@ class PlantRepository private constructor(
     val plants: LiveData<List<Plant>> = liveData<List<Plant>> {
         val plantsLiveData = plantDao.getPlants()
         val customSortOrder = plantsListSortOrderCache.getOrAwait()
-        emitSource(plantsLiveData.map {
-                plantList -> plantList.applySort(customSortOrder)
+        emitSource(plantsLiveData.map { plantList ->
+            plantList.applySort(customSortOrder)
         })
     }
 
-//    fun getPlantsWithGrowZone(growZone: GrowZone) = liveData {
+    //    fun getPlantsWithGrowZone(growZone: GrowZone) = liveData {
 //        val plantsGrowZoneLiveData = plantDao.getPlantsWithGrowZoneNumber(growZone.number)
 //        val customSortOrder = plantsListSortOrderCache.getOrAwait()
 //        emitSource(plantsGrowZoneLiveData.map { plantList ->
@@ -134,6 +143,7 @@ class PlantRepository private constructor(
         withContext(defaultDispatcher) {
             this@applyMainSafeSort.applySort(customSortOrder)
         }
+
     fun getPlantsWithGrowZone(growZone: GrowZone) =
         plantDao.getPlantsWithGrowZoneNumber(growZone.number)
             .switchMap { plantList ->
@@ -142,10 +152,49 @@ class PlantRepository private constructor(
                     emit(plantList.applyMainSafeSort(customSortOrder))
                 }
             }
+
+    //    val plantsFlow: Flow<List<Plant>>
+//        get() = plantDao.getPlantsFlow()
+    private val customSortFlow =
+        flow { emit(plantsListSortOrderCache.getOrAwait()) }
+//    .onStart {
+//            delay(10000)
+//            emit(mutableListOf())
+//        }
+
+    val plantsFlow: Flow<List<Plant>>
+        get() = plantDao.getPlantsFlow()
+            // When the result of customSortFlow is available,
+            // this will combine it with the latest value from
+            // the flow above.  Thus, as long as both `plants`
+            // and `sortOrder` are have an initial value (their
+            // flow has emitted at least one value), any change
+            // to either `plants` or `sortOrder`  will call
+            // `plants.applySort(sortOrder)`.
+            .combine(customSortFlow) { plants, sortOrder ->
+                Log.e("sortOrder", "$sortOrder: ", )
+                plants.applySort(sortOrder)
+            }.flowOn(defaultDispatcher)
+//            .conflate()
+
+//    fun getPlantsWithGrowZoneFlow(growZoneNumber: GrowZone): Flow<List<Plant>> {
+//        return plantDao.getPlantsWithGrowZoneNumberFlow(growZoneNumber.number)
+//    }
+    fun getPlantsWithGrowZoneFlow(growZone: GrowZone): Flow<List<Plant>> {
+        return plantDao.getPlantsWithGrowZoneNumberFlow(growZone.number)
+            .map { plantList ->
+                val sortOrderFromNetwork = plantsListSortOrderCache.getOrAwait()
+                val nextValue = plantList.applyMainSafeSort(sortOrderFromNetwork)
+                Log.e("getPlantsWithGrowZoneFlow", "getPlantsWithGrowZoneFlow : ${Thread.currentThread()} ", )
+                nextValue
+            }
+    }
+
     companion object {
 
         // For Singleton instantiation
-        @Volatile private var instance: PlantRepository? = null
+        @Volatile
+        private var instance: PlantRepository? = null
 
         fun getInstance(plantDao: PlantDao, plantService: NetworkService) =
             instance ?: synchronized(this) {
